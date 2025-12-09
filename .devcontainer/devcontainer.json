@@ -1,0 +1,20 @@
+{
+    "name": "IND2_Text_Classification",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "runArgs": ["--gpus=all"],
+    "workspaceFolder": "/workspaces/IND2",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "github.copilot-chat",
+                "ms-python.python",
+                "ms-toolsai.jupyter",
+                "ms-python.vscode-pylance"
+            ]
+        }
+    },
+    "remoteUser": "root"
+}
