@@ -95,12 +95,14 @@ class Trainer():
         logger.info(f"Submission written to {submission_path} ({len(rows)} rows)")
         return submission_path
 
-    def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
+    def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int, params: dict = None):
         # In DataBricks MLflow we have the next experiment naming
         # e.g. /Users/<user_email>/<experiment_name>
         exp = mlflow.set_experiment(experiment_name=f"/Users/artemserbulov117@gmail.com/9 Topics {self.model_name}")
 
         with mlflow.start_run(experiment_id=exp.experiment_id):
+            if params:
+                mlflow.log_params(params)
             for epoch in range(1, epochs + 1):
                 t0 = time.time()
                 self.model.train()

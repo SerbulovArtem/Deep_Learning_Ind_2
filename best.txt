@@ -1,5 +1,14 @@
+uklfr/gottbert-base and deepset/gelectra-base
+
 batch_size = 64
 lr = 2e-5
 weight_decay = 0.01
 6% warmup
 epochs = 5
+
+deepset/gelectra-large
+batch_size = 64
+lr = 1e-5
+weight_decay = 0.01
+6% warmup
+epochs = 10

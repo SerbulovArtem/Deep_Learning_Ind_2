@@ -131,6 +131,32 @@ def load_test_data(path: Path):
     return texts, ids
 
 
+class BucketBatchSampler:
+    """Sampler that creates batches of similar-length sequences, then shuffles batch order.
+    
+    This provides both efficiency (similar lengths = less padding) and randomness
+    (different batch order each epoch) for better generalization.
+    """
+    def __init__(self, dataset, batch_size, shuffle=True):
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        
+        # Dataset is already sorted by length
+        # Create batches of consecutive samples (similar lengths)
+        self.batches = []
+        for i in range(0, len(dataset), batch_size):
+            self.batches.append(list(range(i, min(i + batch_size, len(dataset)))))
+    
+    def __iter__(self):
+        if self.shuffle:
+            random.shuffle(self.batches)  # Shuffle batch order
+        for batch in self.batches:
+            yield batch
+    
+    def __len__(self):
+        return len(self.batches)
+
+
 def set_seed(seed: int = 42):
     """Set seeds for reproducibility."""
     random.seed(seed)
@@ -152,8 +178,8 @@ def main():
     # NOTE: Here is the tokenizer
 
     # tokenizer = get_tokenizer("deepset/gelectra-base")  # deepset/gelectra-base
-    tokenizer = get_tokenizer("uklfr/gottbert-base")  # GottBERT
-    # tokenizer = get_tokenizer("deepset/gelectra-large")
+    # tokenizer = get_tokenizer("uklfr/gottbert-base")  # GottBERT
+    tokenizer = get_tokenizer("deepset/gelectra-large")
 
     # Load train data and build label mapping
     train_texts, train_label_indices, class_names = load_train_data(TRAIN_PATH)
@@ -162,13 +188,13 @@ def main():
     train_texts_split, val_texts_split, train_labels_split, val_labels_split = train_test_split(
         train_texts,
         train_label_indices,
-        test_size=0.2,
+        test_size=0.1,
         stratify=train_label_indices,
         random_state=42,
     )
-
-    train_dataset = TextDataset(train_texts_split, train_labels_split, tokenizer)
-    val_dataset = TextDataset(val_texts_split, val_labels_split, tokenizer)
+    max_length = 128
+    train_dataset = TextDataset(train_texts_split, train_labels_split, tokenizer, max_length=max_length)
+    val_dataset = TextDataset(val_texts_split, val_labels_split, tokenizer, max_length=max_length)
     
     # Sort datasets by length for efficient batching
     train_dataset.sort_by_length()
@@ -199,17 +225,21 @@ def main():
             "attention_mask": torch.tensor(padded_attention_masks, dtype=torch.long),
         }, torch.tensor(labels, dtype=torch.long)
 
+    batch_size=16
+
+    # Create batch sampler that shuffles batches (not individual samples)
+    train_batch_sampler = BucketBatchSampler(train_dataset, batch_size, shuffle=True)
+    
     train_loader = DataLoader(
-        train_dataset, 
-        batch_size=64, 
-        shuffle=False,  # Already sorted, don't shuffle to keep similar lengths together
+        train_dataset,
+        batch_sampler=train_batch_sampler,  # Use batch_sampler for efficient + random batching
         collate_fn=collate_fn,
         num_workers=2, 
         pin_memory=torch.cuda.is_available()
     )
     val_loader = DataLoader(
         val_dataset, 
-        batch_size=64, 
+        batch_size=batch_size, 
         shuffle=False,
         collate_fn=collate_fn,
         num_workers=2, 
@@ -220,14 +250,16 @@ def main():
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # model = GelectraClassifier(model_name="deepset/gelectra-base", num_labels=len(class_names)).to(device)
-    model = GottBERTClassifier(model_name="uklfr/gottbert-base", num_labels=len(class_names)).to(device)
-    # model = GelectraClassifier(model_name="deepset/gelectra-large", num_labels=len(class_names)).to(device)
+    # model = GottBERTClassifier(model_name="uklfr/gottbert-base", num_labels=len(class_names)).to(device)
+    model = GelectraClassifier(model_name="deepset/gelectra-large", num_labels=len(class_names)).to(device)
 
     # Setup optimizer and scheduler
-    optimizer = AdamW(model.parameters(), lr=2e-5, weight_decay=0.01)
+    weight_decay = 0.2
+    start_lr = 1e-5
+    optimizer = AdamW(model.parameters(), lr=start_lr, weight_decay=weight_decay) # change lr
     
     # Warmup + linear decay scheduler (warmup 6%)
-    epochs = 5
+    epochs = 8
     total_steps = len(train_loader) * epochs
     warmup_steps = int(0.06 * total_steps)  # 6% warmup
     
@@ -237,8 +269,17 @@ def main():
         num_training_steps=total_steps
     )
 
+    params = {
+        "weight_decay": weight_decay,
+        "start_lr": start_lr,
+        "batch_size": batch_size,
+        "epochs": epochs,
+        "warmup_steps": warmup_steps,
+        "max_length": max_length
+    }
+
     trainer = Trainer(model, optimizer=optimizer, scheduler=scheduler, compile=False)
-    trainer.fit(train_loader, val_loader, epochs=epochs)
+    trainer.fit(train_loader, val_loader, epochs=epochs, params=params)
 
     # Save the model
     out_dir = Path("models")
@@ -248,8 +289,8 @@ def main():
 
     # Optional: create submission on test set
     test_texts, test_ids = load_test_data(TEST_PATH)
-    test_dataset = TextTestDataset(test_texts, test_ids, tokenizer)
-    test_loader = DataLoader(test_dataset, batch_size=16)
+    test_dataset = TextTestDataset(test_texts, test_ids, tokenizer, max_length=max_length)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size)
     trainer.create_submission(test_loader, class_names, submission_path="data/submission.csv")
 
 

@@ -18,6 +18,8 @@ class GelectraClassifier(nn.Module):
         self.backbone = AutoModelForSequenceClassification.from_pretrained(
             model_name,
             num_labels=num_labels,
+            hidden_dropout_prob=0.3,
+            attention_probs_dropout_prob=0.3,
         )
 
     def forward(self, xb, y=None):
@@ -52,6 +54,8 @@ class GottBERTClassifier(nn.Module):
         self.backbone = AutoModelForSequenceClassification.from_pretrained(
             model_name,
             num_labels=num_labels,
+            hidden_dropout_prob=0.3,
+            attention_probs_dropout_prob=0.3,
         )
 
     def forward(self, xb, y=None):
