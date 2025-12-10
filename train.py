@@ -31,7 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 DATA_DIR = Path("data")
-TRAIN_PATH = DATA_DIR / "train_filtered.csv"
+TRAIN_PATH = DATA_DIR / "train.csv"
 TEST_PATH = DATA_DIR / "test.csv"
 
 
@@ -149,8 +149,11 @@ def main():
     mlflow.autolog(disable=True)
     mlflow.login()
 
+    # NOTE: Here is the tokenizer
+
     # tokenizer = get_tokenizer("deepset/gelectra-base")  # deepset/gelectra-base
     tokenizer = get_tokenizer("uklfr/gottbert-base")  # GottBERT
+    # tokenizer = get_tokenizer("deepset/gelectra-large")
 
     # Load train data and build label mapping
     train_texts, train_label_indices, class_names = load_train_data(TRAIN_PATH)
@@ -201,7 +204,7 @@ def main():
         batch_size=64, 
         shuffle=False,  # Already sorted, don't shuffle to keep similar lengths together
         collate_fn=collate_fn,
-        num_workers=1, 
+        num_workers=2, 
         pin_memory=torch.cuda.is_available()
     )
     val_loader = DataLoader(
@@ -209,18 +212,21 @@ def main():
         batch_size=64, 
         shuffle=False,
         collate_fn=collate_fn,
-        num_workers=1, 
+        num_workers=2, 
         pin_memory=torch.cuda.is_available()
     )
+
+    # NOTE: Here is the model
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # model = GelectraClassifier(model_name="deepset/gelectra-base", num_labels=len(class_names)).to(device)
     model = GottBERTClassifier(model_name="uklfr/gottbert-base", num_labels=len(class_names)).to(device)
+    # model = GelectraClassifier(model_name="deepset/gelectra-large", num_labels=len(class_names)).to(device)
 
     # Setup optimizer and scheduler
     optimizer = AdamW(model.parameters(), lr=2e-5, weight_decay=0.01)
     
-    # Cosine annealing scheduler with warmup (6% warmup ratio)
+    # Warmup + linear decay scheduler (warmup 6%)
     epochs = 5
     total_steps = len(train_loader) * epochs
     warmup_steps = int(0.06 * total_steps)  # 6% warmup
@@ -230,9 +236,6 @@ def main():
         num_warmup_steps=warmup_steps,
         num_training_steps=total_steps
     )
-    
-    # Alternative: Cosine annealing (uncomment to use instead)
-    # scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
 
     trainer = Trainer(model, optimizer=optimizer, scheduler=scheduler, compile=False)
     trainer.fit(train_loader, val_loader, epochs=epochs)
