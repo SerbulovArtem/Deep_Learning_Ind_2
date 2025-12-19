@@ -8,11 +8,11 @@ from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 from scipy.cluster.hierarchy import linkage, leaves_list
 from torch.utils.data import DataLoader
 
-from models import GottBERTClassifier, get_tokenizer
+from models import GermanBERTClassifier, get_tokenizer
 from train import TextDataset
 
-MODEL_FILE = "models/GottBERTClassifier_final.pth"
-DATA_PATH = Path("data/train_filtered.csv")  # Use filtered data or "data/train.csv"
+MODEL_FILE = "models/GermanBERTClassifier_final.pth"
+DATA_PATH = Path("data/train.csv")
 BATCH = 64
 OUT_DIR = "data/analysis"
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -20,7 +20,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Load tokenizer
-tokenizer = get_tokenizer("uklfr/gottbert-base")
+tokenizer = get_tokenizer("bert-base-german-cased")
 
 # Load data
 texts = []
@@ -69,7 +69,7 @@ def collate_fn(batch):
 loader = DataLoader(dataset, batch_size=BATCH, shuffle=False, collate_fn=collate_fn, num_workers=1)
 
 # Load model
-model = GottBERTClassifier(model_name="uklfr/gottbert-base", num_labels=len(unique_labels))
+model = GermanBERTClassifier(model_name="bert-base-german-cased", num_labels=len(unique_labels))
 
 state = torch.load(MODEL_FILE, map_location=device)
 
